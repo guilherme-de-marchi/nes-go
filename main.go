@@ -12,17 +12,31 @@ type cpu struct {
 	registerX,
 	status uint8
 	programCounter uint16
+	memory         [0xFFFF]uint8
 }
 
 func newCpu() *cpu {
 	return &cpu{}
 }
 
-func (c *cpu) interpret(program []uint8) {
-	c.programCounter = 0
+func (c *cpu) memRead(addr uint16) uint8 {
+	return c.memory[addr]
+}
 
+func (c *cpu) memWrite(addr uint16, data uint8) {
+	c.memory[addr] = data
+}
+
+func (c *cpu) load(program []uint8) {
+	for i, v := range program {
+		c.memory[0x8000+i] = v
+	}
+	c.programCounter = 0x8000
+}
+
+func (c *cpu) run() {
 	for {
-		opsCode := program[c.programCounter]
+		opsCode := c.memRead(c.programCounter)
 		c.programCounter += 1
 
 		switch opsCode {
@@ -34,7 +48,7 @@ func (c *cpu) interpret(program []uint8) {
 			c.updateZNFlags(c.registerX)
 
 		case LDA:
-			param := program[c.programCounter]
+			param := c.memRead(c.programCounter)
 			c.programCounter += 1
 			c.LDA(param)
 			c.updateZNFlags(c.registerA)
@@ -44,6 +58,11 @@ func (c *cpu) interpret(program []uint8) {
 			c.updateZNFlags(c.registerX)
 		}
 	}
+}
+
+func (c *cpu) loadAndRun(program []uint8) {
+	c.load(program)
+	c.run()
 }
 
 func (c *cpu) TAX() {
@@ -73,6 +92,4 @@ func (c *cpu) updateZNFlags(result uint8) {
 }
 
 func main() {
-	c := newCpu()
-	c.interpret([]uint8{})
 }
