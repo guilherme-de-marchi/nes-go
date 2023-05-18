@@ -2,10 +2,43 @@ package main
 
 import "testing"
 
-func TestLoad(t *testing.T) {
+func Test_MemRead(t *testing.T) {
+	c := newCpu()
+	c.memory[0] = 1
+	if c.memRead(0) != 1 {
+		t.Errorf("should read 1")
+	}
+}
+
+func Test_MemReadUint16(t *testing.T) {
+	c := newCpu()
+	c.memory[0] = 0xFF
+	c.memory[1] = 0xFF
+	if c.memReadUint16(0) != 0xFFFF {
+		t.Errorf("should read 0xFFFF")
+	}
+}
+
+func Test_MemWrite(t *testing.T) {
+	c := newCpu()
+	c.memWrite(0, 1)
+	if c.memory[0] != 1 {
+		t.Errorf("should write 1")
+	}
+}
+
+func Test_MemWriteUint16(t *testing.T) {
+	c := newCpu()
+	c.memWriteUint16(0, 0xFFFF)
+	if c.memory[0] != 0xFF || c.memory[1] != 0xFF {
+		t.Errorf("should write 0xFFFF")
+	}
+}
+
+func Test_Load(t *testing.T) {
 	c := newCpu()
 	program := []uint8{
-		LDA,
+		LDA_immediate,
 		0xFF,
 		TAX,
 		BRK,
@@ -20,10 +53,10 @@ func TestLoad(t *testing.T) {
 	}
 }
 
-func TestTAXWithData(t *testing.T) {
+func Test_TAXWithData(t *testing.T) {
 	c := newCpu()
 	c.loadAndRun([]uint8{
-		LDA,
+		LDA_immediate,
 		0xFF,
 		TAX,
 		BRK,
@@ -34,23 +67,10 @@ func TestTAXWithData(t *testing.T) {
 	}
 }
 
-func TestLDA(t *testing.T) {
+func Test_INX(t *testing.T) {
 	c := newCpu()
 	c.loadAndRun([]uint8{
-		LDA,
-		0xFF,
-		BRK,
-	})
-
-	if c.registerA != 0xFF {
-		t.Error("register A has a wrong value")
-	}
-}
-
-func TestINX(t *testing.T) {
-	c := newCpu()
-	c.loadAndRun([]uint8{
-		LDA,
+		LDA_immediate,
 		0x00,
 		TAX,
 		INX,
@@ -62,10 +82,10 @@ func TestINX(t *testing.T) {
 	}
 }
 
-func TestINXOverflow(t *testing.T) {
+func Test_INXOverflow(t *testing.T) {
 	c := newCpu()
 	c.loadAndRun([]uint8{
-		LDA,
+		LDA_immediate,
 		0xFF,
 		TAX,
 		INX,
@@ -78,7 +98,7 @@ func TestINXOverflow(t *testing.T) {
 	}
 }
 
-func TestUpdateZNFlagsWithData(t *testing.T) {
+func Test_UpdateZNFlagsWithData(t *testing.T) {
 	c := newCpu()
 	c.updateZNFlags(0xFF)
 
@@ -91,7 +111,7 @@ func TestUpdateZNFlagsWithData(t *testing.T) {
 	}
 }
 
-func TestUpdateZNFlagsWithZero(t *testing.T) {
+func Test_UpdateZNFlagsWithZero(t *testing.T) {
 	c := newCpu()
 	c.updateZNFlags(0x00)
 
@@ -101,5 +121,25 @@ func TestUpdateZNFlagsWithZero(t *testing.T) {
 
 	if c.status&0b1000_0000 != 0 {
 		t.Error("bit-7 should be 0")
+	}
+}
+
+func Test_WrappingSumUint8(t *testing.T) {
+	if wrappingSumUint8(1, 1) != 2 {
+		t.Error("should be 2")
+	}
+
+	if wrappingSumUint8(0xFF, 1) != 0 {
+		t.Error("should be 0")
+	}
+}
+
+func Test_WrappingSumUint16(t *testing.T) {
+	if wrappingSumUint16(1, 1) != 2 {
+		t.Error("should be 2")
+	}
+
+	if wrappingSumUint16(0xFFFF, 1) != 0 {
+		t.Error("should be 0")
 	}
 }
