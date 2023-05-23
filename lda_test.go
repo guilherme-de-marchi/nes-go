@@ -5,7 +5,7 @@ import "testing"
 func Test_LDA_immediate(t *testing.T) {
 	c := newCpu()
 	c.loadAndRun([]uint8{
-		LDA_immediate,
+		0xA9,
 		1,
 		BRK,
 	})

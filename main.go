@@ -1,30 +1,34 @@
 package main
 
-import "log"
+import (
+	"log"
+)
+
+type instructionFunc func(*cpu, addrMode)
+
+type instruction struct {
+	cpu      *cpu
+	addrMode addrMode
+}
+
+func newInstruction(c *cpu, mode addrMode) instruction {
+	return instruction{
+		cpu:      c,
+		addrMode: mode,
+	}
+}
+
+type instructioner interface {
+	run()
+}
+
+const (
+// lda = iota
+// ldx
+)
 
 const (
 	BRK = 0x00
-
-	LDA_immediate       = 0xA9
-	LDA_zeroPage        = 0xA5
-	LDA_zeroPageX       = 0xB5
-	LDA_absolute        = 0xAD
-	LDA_absoluteX       = 0xBD
-	LDA_absoluteY       = 0xB9
-	LDA_indexedIndirect = 0xA1
-	LDA_indirectIndexed = 0xB1
-
-	LDX_immediate = 0xA2
-	LDX_zeroPage  = 0xA6
-	LDX_zeroPageY = 0xB6
-	LDX_absolute  = 0xAE
-	LDX_absoluteY = 0xBE
-
-	LDY_immediate = 0xA0
-	LDY_zeroPage  = 0xA4
-	LDY_zeroPageX = 0xB4
-	LDY_absolute  = 0xAC
-	LDY_absoluteX = 0xBC
 
 	STA_zeroPage        = 0x85
 	STA_zeroPageX       = 0x95
@@ -53,10 +57,17 @@ type cpu struct {
 	status uint8
 	programCounter uint16
 	memory         [memorySize]uint8
+	instructions   map[uint8]instructioner
 }
 
 func newCpu() *cpu {
-	return &cpu{}
+	return &cpu{
+		instructions: make(map[uint8]instructioner),
+	}
+}
+
+func (c *cpu) addInstruction(opCode uint8, in instructioner) {
+	c.instructions[opCode] = in
 }
 
 func (c *cpu) memRead(addr uint16) uint8 {
@@ -86,6 +97,9 @@ func (c *cpu) reset() {
 	c.registerY = 0
 	c.status = 0
 	c.resetProgramCounter()
+	c.setLDA()
+	c.setLDX()
+	c.setLDY()
 }
 
 func (c *cpu) resetProgramCounter() {
@@ -104,56 +118,68 @@ func (c *cpu) run() {
 		op := c.memRead(c.programCounter)
 		c.programCounter += 1
 
-		switch op {
-		case BRK:
-			return
-
-		case TAX:
-			c.TAX()
-			c.updateZNFlags(c.registerX)
-
-		case LDA_immediate,
-			LDA_zeroPage,
-			LDA_zeroPageX,
-			LDA_absolute,
-			LDA_absoluteX,
-			LDA_absoluteY,
-			LDA_indexedIndirect,
-			LDA_indirectIndexed:
-			c.LDA(c.getAddrMode(op))
-
-		case LDX_immediate,
-			LDX_zeroPage,
-			LDX_zeroPageY,
-			LDX_absolute,
-			LDX_absoluteY:
-			c.LDX(c.getAddrMode(op))
-
-		case LDY_immediate,
-			LDY_zeroPage,
-			LDY_zeroPageX,
-			LDY_absolute,
-			LDY_absoluteX:
-			c.LDY(c.getAddrMode(op))
-
-		case STA_zeroPage,
-			STA_zeroPageX,
-			STA_absolute,
-			STA_absoluteX,
-			STA_absoluteY,
-			STA_indexedIndirect,
-			STA_indirectIndexed:
-			c.STA(c.getAddrMode(op))
-
-		case STX_zeroPage,
-			STX_zeroPageY,
-			STX_absolute:
-			c.STX(c.getAddrMode(op))
-
-		case INX:
-			c.INX()
-			c.updateZNFlags(c.registerX)
+		if op == BRK {
+			break
 		}
+
+		in, ok := c.instructions[op]
+		if !ok {
+			log.Fatal("no instruction found: ", op)
+			return
+		}
+
+		in.run()
+
+		// switch op {
+		// case BRK:
+		// 	return
+
+		// case TAX:
+		// 	c.TAX()
+		// 	c.updateZNFlags(c.registerX)
+
+		// case *ldaImmediate.opCode,
+		// 	*ldaZeroPage.opCode,
+		// 	*ldaZeroPageX.opCode,
+		// 	*ldaAbsolute.opCode,
+		// 	*ldaAbsoluteX.opCode,
+		// 	*ldaAbsoluteY.opCode,
+		// 	*ldaIndexedIndirect.opCode,
+		// 	*ldaIndirectIndexed.opCode:
+		// 	c.LDA(c.getAddrMode(op))
+
+		// case LDX_immediate,
+		// 	LDX_zeroPage,
+		// 	LDX_zeroPageY,
+		// 	LDX_absolute,
+		// 	LDX_absoluteY:
+		// 	c.LDX(c.getAddrMode(op))
+
+		// case LDY_immediate,
+		// 	LDY_zeroPage,
+		// 	LDY_zeroPageX,
+		// 	LDY_absolute,
+		// 	LDY_absoluteX:
+		// 	c.LDY(c.getAddrMode(op))
+
+		// case STA_zeroPage,
+		// 	STA_zeroPageX,
+		// 	STA_absolute,
+		// 	STA_absoluteX,
+		// 	STA_absoluteY,
+		// 	STA_indexedIndirect,
+		// 	STA_indirectIndexed:
+		// 	c.STA(c.getAddrMode(op))
+
+		// case STX_zeroPage,
+		// 	STX_zeroPageY,
+		// 	STX_absolute:
+		// 	c.STX(c.getAddrMode(op))
+
+		// case INX:
+		// 	c.INX()
+		// 	c.updateZNFlags(c.registerX)
+		// }
 	}
 }
 
@@ -167,37 +193,37 @@ func (c *cpu) TAX() {
 	c.registerX = c.registerA
 }
 
-func (c *cpu) LDA(mode addrMode) {
-	addr := mode()
-	param := c.memRead(addr)
-	c.programCounter += 1
-	c.registerA = param
-	c.updateZNFlags(c.registerA)
-}
+// func (c *cpu) LDA(mode addrMode) {
+// 	addr := mode(c)
+// 	param := c.memRead(addr)
+// 	c.programCounter += 1
+// 	c.registerA = param
+// 	c.updateZNFlags(c.registerA)
+// }
 
-func (c *cpu) LDX(mode addrMode) {
-	addr := mode()
-	param := c.memRead(addr)
-	c.programCounter += 1
-	c.registerX = param
-	c.updateZNFlags(c.registerX)
-}
+// func (c *cpu) LDX(mode addrMode) {
+// 	addr := mode(c)
+// 	param := c.memRead(addr)
+// 	c.programCounter += 1
+// 	c.registerX = param
+// 	c.updateZNFlags(c.registerX)
+// }
 
-func (c *cpu) LDY(mode addrMode) {
-	addr := mode()
-	param := c.memRead(addr)
-	c.programCounter += 1
-	c.registerY = param
-	c.updateZNFlags(c.registerY)
-}
+// func (c *cpu) LDY(mode addrMode) {
+// 	addr := mode(c)
+// 	param := c.memRead(addr)
+// 	c.programCounter += 1
+// 	c.registerY = param
+// 	c.updateZNFlags(c.registerY)
+// }
 
 func (c *cpu) STA(mode addrMode) {
-	addr := mode()
+	addr := mode(c)
 	c.memory[addr] = c.registerA
 }
 
 func (c *cpu) STX(mode addrMode) {
-	addr := mode()
+	addr := mode(c)
 	c.memory[addr] = c.registerX
 }
 
@@ -219,117 +245,117 @@ func (c *cpu) updateZNFlags(result uint8) {
 	}
 }
 
-type addrMode func() uint16
+type addrMode func(*cpu) uint16
 
-func (c *cpu) getAddrMode(op uint8) addrMode {
-	switch op {
-	case LDA_immediate,
-		LDX_immediate,
-		LDY_immediate:
-		return c.addrModeImmediate
+// func (c *cpu) getAddrMode(op uint8) addrMode {
+// 	switch op {
+// 	case LDA_immediate,
+// 		LDX_immediate,
+// 		LDY_immediate:
+// 		return addrModeImmediate
 
-	case LDA_zeroPage,
-		LDX_zeroPage,
-		LDY_zeroPage,
-		STA_zeroPage:
-		return c.addrModeZeroPage
+// 	case LDA_zeroPage,
+// 		LDX_zeroPage,
+// 		LDY_zeroPage,
+// 		STA_zeroPage:
+// 		return addrModeZeroPage
 
-	case LDA_zeroPageX,
-		LDY_zeroPageX,
-		STA_zeroPageX:
-		return c.addrModeZeroPageX
+// 	case LDA_zeroPageX,
+// 		LDY_zeroPageX,
+// 		STA_zeroPageX:
+// 		return addrModeZeroPageX
 
-	case LDX_zeroPageY:
-		return c.addrModeZeroPageY
+// 	case LDX_zeroPageY:
+// 		return addrModeZeroPageY
 
-	case LDA_absolute,
-		LDX_absolute,
-		LDY_absolute,
-		STA_absolute:
-		return c.addrModeAbsolute
+// 	case LDA_absolute,
+// 		LDX_absolute,
+// 		LDY_absolute,
+// 		STA_absolute:
+// 		return addrModeAbsolute
 
-	case LDA_absoluteX,
-		LDY_absoluteX,
-		STA_absoluteX:
-		return c.addrModeAbsoluteX
+// 	case LDA_absoluteX,
+// 		LDY_absoluteX,
+// 		STA_absoluteX:
+// 		return addrModeAbsoluteX
 
-	case LDA_absoluteY,
-		LDX_absoluteY,
-		STA_absoluteY:
-		return c.addrModeAbsoluteY
+// 	case LDA_absoluteY,
+// 		LDX_absoluteY,
+// 		STA_absoluteY:
+// 		return addrModeAbsoluteY
 
-	case LDA_indexedIndirect,
-		STA_indexedIndirect:
-		return c.addrModeIndexedIndirect
+// 	case LDA_indexedIndirect,
+// 		STA_indexedIndirect:
+// 		return addrModeIndexedIndirect
 
-	case LDA_indirectIndexed,
-		STA_indirectIndexed:
-		return c.addrModeIndirectIndexed
+// 	case LDA_indirectIndexed,
+// 		STA_indirectIndexed:
+// 		return addrModeIndirectIndexed
 
-	default:
-		log.Fatal("no addr mode found")
-		return nil
-	}
-}
+// 	default:
+// 		log.Fatal("no addr mode found")
+// 		return nil
+// 	}
+// }
 
-func (c *cpu) addrModeImplicit() uint16 {
+func addrModeImplicit(c *cpu) uint16 {
 	return 0
 }
 
-func (c *cpu) addrModeAccumulator() uint16 {
+func addrModeAccumulator(c *cpu) uint16 {
 	return 0
 }
 
-func (c *cpu) addrModeImmediate() uint16 {
+func addrModeImmediate(c *cpu) uint16 {
 	addr := c.programCounter
 	return addr
 }
 
-func (c *cpu) addrModeZeroPage() uint16 {
+func addrModeZeroPage(c *cpu) uint16 {
 	addr := c.memRead(c.programCounter)
 	c.programCounter += 1
 	return uint16(addr)
 }
 
-func (c *cpu) addrModeZeroPageX() uint16 {
+func addrModeZeroPageX(c *cpu) uint16 {
 	addr := c.memRead(c.programCounter)
 	c.programCounter += 1
 	return uint16(wrappingSumUint8(addr, c.registerX))
 }
 
-func (c *cpu) addrModeZeroPageY() uint16 {
+func addrModeZeroPageY(c *cpu) uint16 {
 	addr := c.memRead(c.programCounter)
 	c.programCounter += 1
 	return uint16(wrappingSumUint8(addr, c.registerY))
 }
 
-func (c *cpu) addrModeRelative() uint16 {
+func addrModeRelative(c *cpu) uint16 {
 	return 0
 }
 
-func (c *cpu) addrModeAbsolute() uint16 {
+func addrModeAbsolute(c *cpu) uint16 {
 	addr := c.memReadUint16(c.programCounter)
 	c.programCounter += 2
 	return addr
 }
 
-func (c *cpu) addrModeAbsoluteX() uint16 {
+func addrModeAbsoluteX(c *cpu) uint16 {
 	addr := c.memReadUint16(c.programCounter)
 	c.programCounter += 2
 	return uint16(wrappingSumUint16(addr, uint16(c.registerX)))
 }
 
-func (c *cpu) addrModeAbsoluteY() uint16 {
+func addrModeAbsoluteY(c *cpu) uint16 {
 	addr := c.memReadUint16(c.programCounter)
 	c.programCounter += 2
 	return uint16(wrappingSumUint16(addr, uint16(c.registerY)))
 }
 
-func (c *cpu) addrModeIndirect() uint16 {
+func addrModeIndirect(c *cpu) uint16 {
 	return 0
 }
 
-func (c *cpu) addrModeIndexedIndirect() uint16 {
+func addrModeIndexedIndirect(c *cpu) uint16 {
 	base := c.memRead(c.programCounter)
 	c.programCounter += 1
 	base = wrappingSumUint8(base, c.registerX)
@@ -338,7 +364,7 @@ func (c *cpu) addrModeIndexedIndirect() uint16 {
 	return h<<8 | l
 }
 
-func (c *cpu) addrModeIndirectIndexed() uint16 {
+func addrModeIndirectIndexed(c *cpu) uint16 {
 	base := c.memRead(c.programCounter)
 	c.programCounter += 1
 	base = wrappingSumUint8(base, c.registerX)
